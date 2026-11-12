@@ -41,8 +41,23 @@ DISCLAIMER.txt
 
 ## インストール
 
-`install.sh` と `wp-checksums-monitor.sh` を同じディレクトリに置き、SSH で
-Xserver にログインして実行します。
+購入したZIPを手元のパソコンで展開し、フォルダー内の配布ファイル一式を
+SFTPなどでXserverへアップロードしてください。以下では、アップロード先を
+`~/checksum-monitor-package` とします。`~` はSSHでログインするユーザーの
+ホームディレクトリです。
+
+アップロード先は、Web公開ディレクトリ（`public_html`）の外にし、
+インストール先の `~/checksums` とは別のディレクトリにしてください。
+`install.sh`、`wp-checksums-monitor.sh`、`uninstall.sh`、`VERSION` を含む
+配布ファイルは、同じディレクトリに置いてください。
+
+SSHでXserverにログインし、アップロード先へ移動します。
+
+```sh
+cd ~/checksum-monitor-package
+```
+
+以下のインストール用コマンドは、このディレクトリで実行します。
 
 まず診断だけ行う場合:
 
@@ -113,12 +128,56 @@ cd ~/checksums
 
 `sites.conf` が同じディレクトリにある場合、自動的に複数サイトモードで実行します。
 
-バージョン確認:
+この手動実行には、Cronに設定した通知先や通知モードは引き継がれません。
+メールも確認する場合は、次のように通知先を指定してください。
 
 ```sh
+MAIL_TO=user@example.com MAIL_MODE=always ./wp-checksums-monitor.sh
+```
+
+`user@example.com` は実際の通知先に置き換えてください。
+
+インストール済みツールのバージョン確認:
+
+```sh
+cd ~/checksums
 ./wp-checksums-monitor.sh --version
+```
+
+配布ファイルのバージョン確認は、アップロード先で実行します。
+
+```sh
+cd ~/checksum-monitor-package
 sh install.sh --version
 ```
+
+## 導入後の確認
+
+1. インストール時の初回チェックで、選択したサイトが処理されたか確認します。
+   初回チェックではメール通知を行いません。警告やエラーが出た場合は、表示された
+   WP-CLIの出力を確認してください。
+2. 「通知テストメールを送信しますか？」で `y` を選び、実際に受信できるか確認します。
+   画面の送信完了表示だけでなく、受信箱で確認してください。
+3. 次のコマンドでCron登録を確認します。
+
+   ```sh
+   crontab -l
+   ```
+
+   `# BEGIN WordPress checksum monitor` から `# END WordPress checksum monitor`
+   までのブロックに、指定した実行時刻・通知先・通知モードがあることを確認します。
+4. 登録した時刻を過ぎたら、次のコマンドでログの日時と処理結果を確認します。
+
+   ```sh
+   tail -n 50 ~/checksums/checksum-monitor.log
+   ```
+
+   `Completed multi-site checksum verification: total=... failed=...` の
+   `total` が監視対象数と一致するか確認してください。`failed=0` は検証失敗なし、
+   `failed` が1以上の場合は同じ実行の警告・エラーを確認します。
+
+異常時だけ通知する設定では、メールが来ないことだけで稼働を判断できません。
+導入後は、Cronによる実行結果がログに残るところまで確認してください。
 
 ## sites.conf
 
@@ -160,6 +219,35 @@ none      メールしない
 ~/checksums/checksum-monitor.log
 ```
 
+上記はCron実行時と、`cd ~/checksums` 後の手動実行時の保存先です。
+ログは実行時のカレントディレクトリに作成されるため、インストール時の初回チェックの
+ログは、通常 `~/checksum-monitor-package/checksum-monitor.log` に残ります。
+
+## 設定の変更
+
+通知先・実行時刻・メール通知モードを変更する場合は、配布ファイルを置いた
+ディレクトリで `sh install.sh` を再実行し、希望する内容を入力してください。
+監視用のCron管理ブロックが更新されます。
+
+再実行すると `sites.conf` も選択したサイト一覧で上書きされます。
+手動で追加したサイトやWebhook URLは引き継がれないため、事前に設定を控えてください。
+
+監視対象だけを変更する場合は、`~/checksums/sites.conf` をテキストエディターで
+編集できます。1サイトにつき1行で追加・削除し、既存の3列の形式を保ってください。
+保存後、上記「通常の実行」の手順で対象サイトと結果を確認します。
+
+## 新しいバージョンへの更新
+
+1. `~/checksums` のファイル一式をバックアップし、`crontab -l` の表示内容も保存します。
+   バックアップはWeb公開ディレクトリの外で保管してください。
+2. 新版のZIPを展開し、配布ファイル一式を `~/checksums` とは別のディレクトリに
+   アップロードします。新版のREADMEに更新時の案内がある場合は確認してください。
+3. 新版のアップロード先で `sh install.sh --check` を実行し、問題がなければ
+   `sh install.sh` を実行します。通知先・実行時刻・通知モード・監視対象を再入力します。
+4. `sites.conf` は再生成されるため、必要なWebhook URLや手動設定をバックアップから
+   確認して再設定します。スクリプト・`VERSION`・`cron.checksums` も更新されます。
+5. バージョンと「導入後の確認」の各項目を確認します。
+
 ## 検知できる範囲
 
 このツールは WP-CLI の次のコマンドを使います。
@@ -188,6 +276,21 @@ wp plugin verify-checksums --all
 完全なマルウェア検知や侵入防止を保証するものではありません。
 
 ## よくある質問
+
+### メールが届かない場合は？
+
+次の順で確認してください。
+
+1. 迷惑メールフォルダーや受信側の振り分け・受信拒否設定を確認します。
+2. `crontab -l` で `MAIL_TO` が正しいか確認します。`MAIL_MODE=fail_only` は
+   異常時だけ、`none` はメールを送りません。
+3. 「通常の実行」の通知先を指定したコマンドで、`MAIL_MODE=always` にして
+   手動実行し、受信できるか確認します。
+4. ログの日時、検証結果、`sendmail is not available` などのエラーを確認します。
+   手動実行は動くのに指定時刻のログが増えない場合は、Cron登録と実行環境を確認します。
+
+環境診断をやり直す場合は、配布ファイルのディレクトリで
+`sh install.sh --check` を実行してください。
 
 ### 正常時も毎日メールが届きますか？
 
@@ -241,26 +344,12 @@ sh uninstall.sh
 sh uninstall.sh --dry-run
 ```
 
-## 配布ZIPの作成
+## 利用条件と問い合わせ
 
-開発環境では、次のコマンドで配布用ZIPを作成できます。
+利用前に、同梱の [LICENSE.txt](LICENSE.txt)（利用許諾）と
+[DISCLAIMER.txt](DISCLAIMER.txt)（免責事項）を確認してください。
 
-```sh
-./build-release.sh
-```
-
-`build-release.sh` はZIP作成後に配布物を検証します。原本のファイルと
-`release/` 配下、ZIP内の内容が一致しない場合や、古い例示文字列が残っている場合は
-エラーで停止します。
-
-生成先:
-
-```text
-release/xserver-wp-checksum-monitor-バージョン.zip
-```
-
-配布物だけを確認する場合:
-
-```sh
-./verify-release.sh
-```
+問い合わせ窓口やサポート範囲が購入ページ・購入時の案内に記載されている場合は、
+そちらを確認してください。問い合わせる際は、ツールのバージョン、実行した操作、
+エラー表示や該当時刻のログを用意してください。パスワード、SSH秘密鍵、
+Webhook URLなどの認証情報は送らないでください。
