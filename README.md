@@ -6,6 +6,8 @@ Xserver 上の WordPress を対象に、WordPress コアファイルと公式プ
 異常がなければ「問題なし」、不一致があれば対象サイトと WP-CLI の検証結果を
 メールまたは Webhook に通知します。
 
+購入ページ: [BOOTH](https://pc-fan-tools.booth.pm/items/8925139)
+
 ## 対象環境
 
 - Xserver のレンタルサーバー
